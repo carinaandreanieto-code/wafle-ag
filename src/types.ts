@@ -55,4 +55,6 @@ export interface TableCall {
   waiterName?: string;
   notes?: string;
   status: 'pending' | 'attending' | 'ready' | 'completed';
+  latitude?: number;
+  longitude?: number;
 }

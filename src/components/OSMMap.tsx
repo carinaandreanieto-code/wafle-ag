@@ -15,11 +15,12 @@ import {
   ShoppingBag
 } from 'lucide-react';
 import { formatCurrency } from '../utils';
+import { subscribeDeliveryLocation } from '../firebase';
 
 interface OSMMapProps {
   calls: TableCall[];
   onUpdateStatus: (call: TableCall, nextStatus: 'ready' | 'completed') => void;
-  onOpenGPS: (address: string) => void;
+  onOpenGPS: (address: string, lat?: number, lng?: number) => void;
 }
 
 interface GeoCache {
@@ -34,6 +35,15 @@ export default function OSMMap({ calls, onUpdateStatus, onOpenGPS }: OSMMapProps
   const [geocodedData, setGeocodedData] = useState<{[address: string]: {lat: number; lng: number}}>({});
   const [loadingGeocode, setLoadingGeocode] = useState(false);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const [deliveryLoc, setDeliveryLoc] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Subscribe to real-time delivery location
+  useEffect(() => {
+    const unsub = subscribeDeliveryLocation((loc) => {
+      setDeliveryLoc(loc);
+    });
+    return () => unsub();
+  }, []);
 
   // Load cache and geocode calls
   useEffect(() => {
@@ -41,6 +51,7 @@ export default function OSMMap({ calls, onUpdateStatus, onOpenGPS }: OSMMapProps
     
     const geocodeAddresses = async () => {
       const addressesToGeocode = calls
+        .filter(c => !(c.latitude !== undefined && c.longitude !== undefined))
         .map(c => c.userAddress || '')
         .filter(addr => addr.trim().length > 0);
         
@@ -158,9 +169,44 @@ export default function OSMMap({ calls, onUpdateStatus, onOpenGPS }: OSMMapProps
     
     const bounds: L.LatLngExpression[] = [];
     
+    // 1. Draw delivery person's location if available (Motor scooter icon)
+    if (deliveryLoc) {
+      const motoIcon = L.divIcon({
+        className: 'delivery-moto-marker',
+        html: `
+          <div class="relative flex items-center justify-center w-10 h-10 rounded-full border-2 border-amber-300 bg-amber-500 text-black shadow-lg shadow-black/8 w-10 h-10 ring-4 ring-amber-500/20 active:scale-95 transition-all duration-300">
+            <span class="absolute inline-flex h-full w-full rounded-full animate-ping bg-amber-400 opacity-65"></span>
+            <svg class="w-5 h-5 text-slate-950" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="18" r="3" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18c0-3 3-5 5-5m7 5c0-3-3-5-5-5m0 0V9h-3L8 14" />
+              <rect x="3" y="10" width="4" height="4" rx="0.5" fill="currentColor" />
+            </svg>
+          </div>
+        `,
+        iconSize: [41, 41],
+        iconAnchor: [20, 20]
+      });
+      
+      const motoMarker = L.marker([deliveryLoc.latitude, deliveryLoc.longitude], { icon: motoIcon })
+        .addTo(map)
+        .bindPopup(`
+          <div class="p-1 text-slate-900 font-sans text-xs">
+            <strong class="text-amber-600 block mb-0.5 font-bold">Ubicación de la Moto (Delivery)</strong>
+            <span class="text-[10px] text-slate-500">Actualizando cada 20s</span>
+          </div>
+        `);
+      
+      markersRef.current.push(motoMarker);
+      bounds.push([deliveryLoc.latitude, deliveryLoc.longitude]);
+    }
+
+    // 2. Draw standard orders
     calls.forEach(call => {
       const address = call.userAddress || '';
-      const coords = geocodedData[address];
+      const coords = (call.latitude !== undefined && call.longitude !== undefined)
+        ? { lat: call.latitude, lng: call.longitude }
+        : geocodedData[address];
       
       if (coords) {
         const isEnCamino = call.status === 'ready';
@@ -197,7 +243,7 @@ export default function OSMMap({ calls, onUpdateStatus, onOpenGPS }: OSMMapProps
     if (bounds.length > 0) {
       map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [60, 60], maxZoom: 15 });
     }
-  }, [calls, geocodedData]);
+  }, [calls, geocodedData, deliveryLoc]);
 
   // Find currently selected call details
   const selectedCall = calls.find(c => c.id === selectedCallId);
@@ -208,9 +254,16 @@ export default function OSMMap({ calls, onUpdateStatus, onOpenGPS }: OSMMapProps
     if (!map) return;
     
     const bounds: L.LatLngExpression[] = [];
+    
+    if (deliveryLoc) {
+      bounds.push([deliveryLoc.latitude, deliveryLoc.longitude]);
+    }
+
     calls.forEach(call => {
       const address = call.userAddress || '';
-      const coords = geocodedData[address];
+      const coords = (call.latitude !== undefined && call.longitude !== undefined)
+        ? { lat: call.latitude, lng: call.longitude }
+        : geocodedData[address];
       if (coords) {
         bounds.push([coords.lat, coords.lng]);
       }
@@ -306,7 +359,7 @@ export default function OSMMap({ calls, onUpdateStatus, onOpenGPS }: OSMMapProps
           {/* Action cluster */}
           <div className="flex gap-2">
             <button
-              onClick={() => onOpenGPS(selectedCall.userAddress || '')}
+              onClick={() => onOpenGPS(selectedCall.userAddress || '', selectedCall.latitude, selectedCall.longitude)}
               className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-white py-2.5 rounded-xl text-xs font-bold uppercase flex items-center justify-center space-x-1.5 transition-all active:scale-95"
             >
               <Navigation className="w-3.5 h-3.5 text-white" />

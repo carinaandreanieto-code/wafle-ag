@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TableCall } from '../types';
-import { subscribeCalls, saveCall } from '../firebase';
+import { subscribeCalls, saveCall, saveDeliveryLocation } from '../firebase';
 import { formatCurrency } from '../utils';
 import { 
   Truck, 
@@ -12,7 +12,8 @@ import {
   Phone,
   LayoutList,
   ChevronRight,
-  ShoppingBag
+  ShoppingBag,
+  MessageCircle
 } from 'lucide-react';
 import OSMMap from './OSMMap';
 import { motion, AnimatePresence } from 'motion/react';
@@ -29,6 +30,40 @@ export default function DeliveryPanel({ onClose }: DeliveryPanelProps) {
     nextStatus: 'ready' | 'completed';
   } | null>(null);
 
+  // Auto-update GPS location of the delivery person in Firestore every 20 seconds
+  useEffect(() => {
+    const updateLocation = () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
+            try {
+              await saveDeliveryLocation(latitude, longitude);
+              console.log('Ubicación del delivery actualizada:', latitude, longitude);
+            } catch (err) {
+              console.error('Error al guardar ubicación del delivery:', err);
+            }
+          },
+          (err) => {
+            console.warn('No se obtuvo la ubicación del GPS:', err.message);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      }
+    };
+
+    // First run immediately
+    updateLocation();
+
+    // Run every 20 seconds
+    const intervalId = setInterval(updateLocation, 20000);
+    return () => clearInterval(intervalId);
+  }, []);
+
   // Subscribe to real-time calls
   useEffect(() => {
     const unsub = subscribeCalls((loadedCalls) => {
@@ -43,9 +78,17 @@ export default function DeliveryPanel({ onClose }: DeliveryPanelProps) {
     setConfirmModal({ call, nextStatus });
   };
 
-  const handleOpenGPS = (address: string) => {
-    if (!address) return;
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  const handleOpenGPS = (address: string, lat?: number, lng?: number) => {
+    let url = '';
+    if (lat !== undefined && lng !== undefined) {
+      url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    } else {
+      if (!address) return;
+      const query = address.toLowerCase().includes('alta gracia')
+        ? address
+        : `${address}, Alta Gracia, Córdoba, Argentina`;
+      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    }
     window.open(url, '_blank');
   };
 
@@ -141,9 +184,33 @@ export default function DeliveryPanel({ onClose }: DeliveryPanelProps) {
                           <Navigation className="w-4 h-4 text-emerald-500" />
                           <span>{call.userAddress}</span>
                         </h4>
-                        <div className="flex items-center space-x-2 text-slate-400">
-                          <Phone className="w-3 h-3" />
-                          <span className="text-xs font-mono">{call.userPhone}</span>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <div className="flex items-center space-x-2 text-slate-400">
+                            <Phone className="w-3.5 h-3.5" />
+                            <span className="text-xs font-mono font-bold select-all">{call.userPhone}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            {/* WhatsApp Button */}
+                            <a
+                              href={`https://wa.me/${call.userPhone.replace(/\D/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition-all active:scale-95 cursor-pointer"
+                            >
+                              <MessageCircle className="w-3 h-3 text-current" />
+                              <span>WhatsApp</span>
+                            </a>
+
+                            {/* Call Button */}
+                            <a
+                              href={`tel:${call.userPhone.replace(/\D/g, '')}`}
+                              className="px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500 hover:text-black text-sky-400 border border-sky-500/20 rounded-lg text-[11px] font-bold flex items-center space-x-1 transition-all active:scale-95 cursor-pointer"
+                            >
+                              <Phone className="w-3 h-3 text-current" />
+                              <span>Llamar</span>
+                            </a>
+                          </div>
                         </div>
                       </div>
                       <div className="text-right">
@@ -172,7 +239,7 @@ export default function DeliveryPanel({ onClose }: DeliveryPanelProps) {
                     {/* Actions */}
                     <div className="flex space-x-3">
                       <button 
-                        onClick={() => handleOpenGPS(call.userAddress || '')}
+                        onClick={() => handleOpenGPS(call.userAddress || '', call.latitude, call.longitude)}
                         className="flex-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white py-3 rounded-xl font-bold text-xs uppercase flex items-center justify-center space-x-2 active:scale-95 transition-all"
                       >
                         <MapIcon className="w-4 h-4 text-white" />

@@ -441,3 +441,37 @@ export async function fetchAdminsList(): Promise<{ id: string; email: string; is
     return [];
   }
 }
+
+// 6. Delivery Tracking Operations
+export async function saveDeliveryLocation(latitude: number, longitude: number): Promise<void> {
+  const path = 'delivery/location';
+  try {
+    await setDoc(doc(db, 'delivery', 'location'), {
+      latitude,
+      longitude,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export function subscribeDeliveryLocation(callback: (location: { latitude: number; longitude: number } | null) => void) {
+  const path = 'delivery/location';
+  return onSnapshot(doc(db, 'delivery', 'location'), (docSnapshot) => {
+    if (docSnapshot.exists()) {
+      const data = docSnapshot.data();
+      if (typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        callback({
+          latitude: data.latitude,
+          longitude: data.longitude
+        });
+        return;
+      }
+    }
+    callback(null);
+  }, (e) => {
+    handleFirestoreError(e, OperationType.GET, path);
+  });
+}
+

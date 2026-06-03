@@ -18,6 +18,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { formatCurrency } from '../utils';
+import { subscribeDeliveryLocation } from '../firebase';
 
 interface AdminClientMapProps {
   calls: TableCall[];
@@ -31,6 +32,16 @@ export default function AdminClientMap({ calls }: AdminClientMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+
+  const [deliveryLoc, setDeliveryLoc] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Subscribe to real-time delivery location
+  useEffect(() => {
+    const unsub = subscribeDeliveryLocation((loc) => {
+      setDeliveryLoc(loc);
+    });
+    return () => unsub();
+  }, []);
 
   // Choose date state
   const today = new Date();
@@ -73,6 +84,7 @@ export default function AdminClientMap({ calls }: AdminClientMapProps) {
     
     const geocodeAddresses = async () => {
       const addressesToGeocode = activeDayCalls
+        .filter(c => !(c.latitude !== undefined && c.longitude !== undefined))
         .map(c => c.userAddress || '')
         .filter(addr => addr.trim().length > 0);
         
@@ -191,9 +203,44 @@ export default function AdminClientMap({ calls }: AdminClientMapProps) {
     
     const bounds: L.LatLngExpression[] = [];
     
+    // 1. Draw delivery person's location if available (Motor scooter icon)
+    if (deliveryLoc) {
+      const motoIcon = L.divIcon({
+        className: 'delivery-moto-marker',
+        html: `
+          <div class="relative flex items-center justify-center w-10 h-10 rounded-full border-2 border-amber-300 bg-amber-500 text-black shadow-lg shadow-black/8 w-10 h-10 ring-4 ring-amber-500/20 active:scale-95 transition-all duration-300">
+            <span class="absolute inline-flex h-full w-full rounded-full animate-ping bg-amber-400 opacity-65"></span>
+            <svg class="w-5 h-5 text-slate-950" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="18" r="3" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18c0-3 3-5 5-5m7 5c0-3-3-5-5-5m0 0V9h-3L8 14" />
+              <rect x="3" y="10" width="4" height="4" rx="0.5" fill="currentColor" />
+            </svg>
+          </div>
+        `,
+        iconSize: [41, 41],
+        iconAnchor: [20, 20]
+      });
+      
+      const motoMarker = L.marker([deliveryLoc.latitude, deliveryLoc.longitude], { icon: motoIcon })
+        .addTo(map)
+        .bindPopup(`
+          <div class="p-1 text-slate-900 font-sans text-xs">
+            <strong class="text-amber-600 block mb-0.5 font-bold">Ubicación de la Moto (Delivery)</strong>
+            <span class="text-[10px] text-slate-500">Actualizando cada 20s</span>
+          </div>
+        `);
+      
+      markersRef.current.push(motoMarker);
+      bounds.push([deliveryLoc.latitude, deliveryLoc.longitude]);
+    }
+
+    // 2. Draw active day client calls
     activeDayCalls.forEach(call => {
       const address = call.userAddress || '';
-      const coords = geocodedData[address];
+      const coords = (call.latitude !== undefined && call.longitude !== undefined)
+        ? { lat: call.latitude, lng: call.longitude }
+        : geocodedData[address];
       
       if (coords) {
         // Status color configuration
@@ -234,16 +281,23 @@ export default function AdminClientMap({ calls }: AdminClientMapProps) {
     if (bounds.length > 0) {
       map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [50, 50], maxZoom: 15 });
     }
-  }, [activeDayCalls, geocodedData]);
+  }, [activeDayCalls, geocodedData, deliveryLoc]);
 
   const handleFitAll = () => {
     const map = mapRef.current;
     if (!map) return;
     
     const bounds: L.LatLngExpression[] = [];
+    
+    if (deliveryLoc) {
+      bounds.push([deliveryLoc.latitude, deliveryLoc.longitude]);
+    }
+
     activeDayCalls.forEach(call => {
       const address = call.userAddress || '';
-      const coords = geocodedData[address];
+      const coords = (call.latitude !== undefined && call.longitude !== undefined)
+        ? { lat: call.latitude, lng: call.longitude }
+        : geocodedData[address];
       if (coords) bounds.push([coords.lat, coords.lng]);
     });
     

@@ -121,5 +121,10 @@ service cloud.firestore {
       allow update: if (isValidCall(incoming())) || isAdmin();
       allow delete: if isAdmin();
     }
+
+    // Delivery location tracking
+    match /delivery/{docId} {
+      allow read, write: if true;
+    }
   }
 }

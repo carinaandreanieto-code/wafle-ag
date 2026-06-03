@@ -40,7 +40,8 @@ import {
   AlertCircle,
   User,
   Truck,
-  MessageCircle
+  MessageCircle,
+  Loader2
 } from 'lucide-react';
 
 export default function App() {
@@ -86,6 +87,7 @@ export default function App() {
 
   // Active Buzzer Status feedback for client
   const [buzzAnimationActive, setBuzzAnimationActive] = useState(false);
+  const [isFetchingGPS, setIsFetchingGPS] = useState(false);
   const [showBuzzSuccessModal, setShowBuzzSuccessModal] = useState(false);
   const [activeCall, setActiveCall] = useState<TableCall | null>(null);
 
@@ -201,6 +203,7 @@ export default function App() {
     }
 
     setBuzzAnimationActive(true);
+    setIsFetchingGPS(true);
     
     // Normalize phone number to ensure it starts with 549
     const cleanDigits = userPhone.replace(/\D/g, '');
@@ -212,6 +215,35 @@ export default function App() {
         finalPhone = '549' + cleanDigits;
       }
     }
+
+    // Capture GPS coordinates
+    let coords: { latitude: number; longitude: number } | null = null;
+    if (navigator.geolocation) {
+      try {
+        coords = await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              resolve({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              });
+            },
+            (err) => {
+              console.warn("Could not capture GPS:", err.message);
+              resolve(null);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 6000,
+              maximumAge: 0
+            }
+          );
+        });
+      } catch (e) {
+        console.warn("Geolocation API call threw an error:", e);
+      }
+    }
+    setIsFetchingGPS(false);
 
     try {
       if (activeCall) {
@@ -230,7 +262,9 @@ export default function App() {
           ...activeCall,
           userPhone: finalPhone, // Ensure updated phone too
           wishlist: mergedWishlist,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          latitude: coords?.latitude ?? activeCall.latitude,
+          longitude: coords?.longitude ?? activeCall.longitude
         };
         await saveCall(updatedCall);
       } else {
@@ -242,7 +276,9 @@ export default function App() {
           userPhone: finalPhone,
           timestamp: new Date().toISOString(),
           wishlist: wishlist,
-          status: 'pending'
+          status: 'pending',
+          latitude: coords?.latitude ?? undefined,
+          longitude: coords?.longitude ?? undefined
         };
         await saveCall(newCall);
       }
@@ -1127,7 +1163,12 @@ export default function App() {
                             : 'bg-amber-500 hover:bg-amber-400 text-black'
                         }`}
                       >
-                        {wishlist.length === 0 && activeCall ? (
+                        {isFetchingGPS ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>OBTENIENDO GPS...</span>
+                          </>
+                        ) : wishlist.length === 0 && activeCall ? (
                           <>
                             <ShoppingBag className="w-4 h-4" />
                             <span>ESPERANDO...</span>
