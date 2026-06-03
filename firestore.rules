@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -----------------------------------------------------------------
+    // GLOBAL HELPERS (Phase 3 & Pillars)
+    // -----------------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { 
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'carinaandreanieto@gmail.com'
+      ); 
+    }
+    function isEmailVerified() { return request.auth.token.email_verified == true; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // Validation Blueprint for RestaurantConfig
+    function isValidRestaurantConfig(data) {
+      return data.keys().hasAll(['restaurantName', 'pinCode', 'whatsappNumber']) 
+        && data.restaurantName is string && data.restaurantName.size() <= 100
+        && data.pinCode is string && data.pinCode.size() == 5
+        && data.whatsappNumber is string && data.whatsappNumber.size() <= 30;
+    }
+
+    // Validation Blueprint for Category
+    function isValidCategory(data) {
+      return data.keys().hasAll(['id', 'name', 'order', 'backgroundStyle'])
+        && data.keys().size() == 4
+        && isValidId(data.id)
+        && data.name is string && data.name.size() <= 50
+        && data.order is number
+        && data.backgroundStyle in ['luxury', 'fastfood', 'cafe', 'neonbar', 'dessert'];
+    }
+
+    // Validation Blueprint for Product
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'categoryId', 'name', 'description', 'photo', 'prices', 'isSuspended'])
+        && data.keys().size() == 7
+        && isValidId(data.id)
+        && isValidId(data.categoryId)
+        && data.name is string && data.name.size() <= 100
+        && data.description is string && data.description.size() <= 500
+        && data.photo is string && data.photo.size() <= 500000 // 500KB limit for base64
+        && data.prices is list && data.prices.size() >= 1 && data.prices.size() <= 5
+        && data.isSuspended is bool;
+    }
+
+    // Validation Blueprint for Call
+    function isValidCall(data) {
+      return data.keys().hasAll(['id', 'userName', 'userAddress', 'userPhone', 'timestamp', 'wishlist', 'status'])
+        && isValidId(data.id)
+        && data.userName is string && data.userName.size() <= 100
+        && data.userAddress is string && data.userAddress.size() <= 200
+        && data.userPhone is string && data.userPhone.size() <= 30
+        && data.timestamp is string && data.timestamp.size() <= 64
+        && data.wishlist is list
+        && data.status in ['pending', 'attending', 'ready', 'completed'];
+    }
+
+    // -----------------------------------------------------------------
+    // COLLECTION RULES
+    // -----------------------------------------------------------------
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Admins collection (Critical for isAdmin helper)
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == adminId && request.auth.token.email == 'carinaandreanieto@gmail.com' && isEmailVerified();
+      allow update: if isSignedIn() && request.auth.uid == adminId && request.auth.token.email == 'carinaandreanieto@gmail.com' && isEmailVerified();
+      allow delete: if false; 
+    }
+
+    // Restaurant Configuration
+    match /config/restaurant {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidCategory(incoming());
+      allow update: if isAdmin() && isValidCategory(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Products
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidProduct(incoming());
+      allow update: if isAdmin() && isValidProduct(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Calls (Timbre)
+    match /calls/{callId} {
+      allow read: if true; 
+      allow create: if isValidCall(incoming()) && (
+        // Action: New call from client
+        incoming().status == 'pending'
+      );
+      allow update: if (isValidCall(incoming())) || isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

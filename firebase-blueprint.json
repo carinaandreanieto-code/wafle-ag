@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "RestaurantConfig": {
+      "title": "RestaurantConfig",
+      "description": "Configuración global de la app de restaurante",
+      "type": "object",
+      "properties": {
+        "restaurantName": { "type": "string", "description": "Nombre del restaurante" },
+        "pinCode": { "type": "string", "description": "PIN de acceso de 5 cifras para el panel de gestión" },
+        "whatsappNumber": { "type": "string", "description": "Número de Whatsapp para reservas" },
+        "isOpen": { "type": "boolean", "description": "Define si el local está abierto" },
+        "chefSuggestion": { "type": "object", "description": "Información del plato sugerencia del chef" }
+      },
+      "required": ["restaurantName", "pinCode", "whatsappNumber"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Hojas o categorías del menú del restaurante",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identificador de la categoría" },
+        "name": { "type": "string", "description": "Nombre de la hoja (ej. Comidias, Bebidas)" },
+        "order": { "type": "number", "description": "Orden del botón de la hoja" },
+        "backgroundStyle": { "type": "string", "description": "Estilo de fondo elegido para la categoría" }
+      },
+      "required": ["id", "name", "order", "backgroundStyle"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Productos del menú asociados a una categoría",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID único" },
+        "categoryId": { "type": "string", "description": "ID de la categoría a la que pertenece" },
+        "name": { "type": "string", "description": "Nombre del producto" },
+        "description": { "type": "string", "description": "Descripción" },
+        "photo": { "type": "string", "description": "Foto comprimida base64" },
+        "prices": { "type": "array", "description": "Lista de precios (etiqueta y valor)" },
+        "isSuspended": { "type": "boolean", "description": "Si el plato está en suspenso" }
+      },
+      "required": ["id", "categoryId", "name", "description", "photo", "prices", "isSuspended"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "Llamadas de timbre y estado de mesa",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID único" },
+        "userName": { "type": "string", "description": "Nombre del cliente" },
+        "userAddress": { "type": "string", "description": "Dirección del cliente" },
+        "userPhone": { "type": "string", "description": "Teléfono del cliente" },
+        "timestamp": { "type": "string", "description": "Fecha y hora del pedido" },
+        "wishlist": { "type": "array", "description": "Lista de deseos para que el mozo tenga idea" },
+        "waiterName": { "type": "string", "description": "Nombre del mozo asignado si lo hay" },
+        "notes": { "type": "string", "description": "Observaciones añadidas" },
+        "status": { "type": "string", "description": "Estado del pedido o llamado ('pending', 'attending', 'ready', 'completed')" }
+      },
+      "required": ["id", "userName", "userAddress", "userPhone", "timestamp", "wishlist", "status"]
+    }
+  },
+  "firestore": {
+    "config/restaurant": {
+      "schema": "RestaurantConfig",
+      "description": "Documento único para configuraciones globales"
+    },
+    "categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Colección de hojas de categorías"
+    },
+    "products/{productId}": {
+      "schema": "Product",
+      "description": "Colección de productos correspondientes a las hojas"
+    },
+    "calls/{callId}": {
+      "schema": "Call",
+      "description": "Colección de interacciones y llamados de mozo"
+    },
+    "admins/{adminId}": {
+      "schema": {
+        "title": "Admin",
+        "type": "object",
+        "properties": {
+          "email": { "type": "string" }
+        },
+        "required": ["email"]
+      },
+      "description": "Lista de administradores autorizados por correo electrónico"
+    }
+  }
+}
