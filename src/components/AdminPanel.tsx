@@ -4,7 +4,8 @@ import {
   Product, 
   RestaurantConfig, 
   TableCall, 
-  ProductPrice 
+  ProductPrice,
+  WishlistItem
 } from '../types';
 import { 
   saveCategory, 
@@ -47,7 +48,9 @@ import {
   DollarSign,
   Map,
   Users,
-  UserPlus
+  UserPlus,
+  ShoppingBag,
+  X
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -75,6 +78,103 @@ export default function AdminPanel({ categories, products, config, isAdmin, onCl
     }
   };
   const [callsFilter, setCallsFilter] = useState<'active' | 'completed' | 'all'>('active');
+  
+  // Manual Order entry state
+  const [isManualOrderOpen, setIsManualOrderOpen] = useState(false);
+  const [manualClientName, setManualClientName] = useState('');
+  const [manualClientAddress, setManualClientAddress] = useState('');
+  const [manualClientPhone, setManualClientPhone] = useState('');
+  const [manualWishlist, setManualWishlist] = useState<WishlistItem[]>([]);
+  const [selectedProdId, setSelectedProdId] = useState('');
+  const [selectedProdPriceIdx, setSelectedProdPriceIdx] = useState(0);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+
+  const handleAddProductToManualWishlist = () => {
+    if (!selectedProdId) return;
+    const prod = products.find(p => p.id === selectedProdId);
+    if (!prod) return;
+    const priceObj = prod.prices[selectedProdPriceIdx] || prod.prices[0];
+    if (!priceObj) return;
+
+    // Check if product with same price option is already in manual wishlist
+    const existsIdx = manualWishlist.findIndex(
+      item => item.productId === prod.id && item.selectedPriceLabel === priceObj.label
+    );
+
+    if (existsIdx > -1) {
+      const nextList = [...manualWishlist];
+      nextList[existsIdx].quantity += selectedQuantity;
+      setManualWishlist(nextList);
+    } else {
+      const newItem: WishlistItem = {
+        productId: prod.id,
+        productName: prod.name,
+        selectedPriceLabel: priceObj.label,
+        selectedPriceValue: priceObj.value,
+        quantity: selectedQuantity
+      };
+      setManualWishlist([...manualWishlist, newItem]);
+    }
+    // reset selection quantity
+    setSelectedQuantity(1);
+    setSelectedProdId('');
+    setSelectedProdPriceIdx(0);
+  };
+
+  const handleRemoveProductFromManualWishlist = (idx: number) => {
+    setManualWishlist(manualWishlist.filter((_, i) => i !== idx));
+  };
+
+  const handleSaveManualOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualClientName.trim()) {
+      alert("Por favor ingresa el nombre del cliente");
+      return;
+    }
+    if (manualWishlist.length === 0) {
+      alert("Por favor agrega al menos un producto al pedido");
+      return;
+    }
+
+    // Normalize phone format if provided
+    let finalPhone = manualClientPhone.trim();
+    if (finalPhone) {
+      const cleanDigits = finalPhone.replace(/\D/g, '');
+      if (cleanDigits.length > 0) {
+        if (!cleanDigits.startsWith('549') && cleanDigits.length <= 10) {
+          finalPhone = `549${cleanDigits}`;
+        } else {
+          finalPhone = cleanDigits;
+        }
+      }
+    }
+
+    const newCall: TableCall = {
+      id: 'manual_' + Date.now(),
+      userName: manualClientName.trim(),
+      userAddress: manualClientAddress.trim() || 'Pedido en local / Retira (Sin envío)',
+      userPhone: finalPhone,
+      timestamp: new Date().toISOString(),
+      wishlist: manualWishlist,
+      status: 'pending',
+      notes: 'Manual por Admin / Telefono o Whatsapp'
+    };
+
+    try {
+      await saveCall(newCall);
+      // Reset form & state
+      setManualClientName('');
+      setManualClientAddress('');
+      setManualClientPhone('');
+      setManualWishlist([]);
+      setSelectedProdId('');
+      setSelectedProdPriceIdx(0);
+      setIsManualOrderOpen(false);
+      alert("¡Pedido manual guardado con éxito! Se listará en Consultas con estado Pendiente.");
+    } catch (err: any) {
+      alert("Error al guardar el pedido: " + (err.message || err));
+    }
+  };
   
   // WhatsApp config input state
   const [whatsapp, setWhatsapp] = useState(config.whatsappNumber);
@@ -526,29 +626,48 @@ export default function AdminPanel({ categories, products, config, isAdmin, onCl
                 <p className="text-[10px] text-slate-500 mt-0.5">Pantalla optimizada en alta densidad para múltiples columnas en PC y Tablets</p>
               </div>
 
-              {/* Calls Filter Tabs */}
-              <div className="flex items-center space-x-1 bg-slate-900/90 border border-slate-800 p-1 rounded-xl">
+              {/* Actions & Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Save Manual Order button */}
                 <button
                   type="button"
-                  onClick={() => setCallsFilter('active')}
-                  className={`px-3 py-1 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all ${callsFilter === 'active' ? 'bg-amber-500 text-black shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                  onClick={() => {
+                    setSelectedProdId('');
+                    setSelectedProdPriceIdx(0);
+                    setSelectedQuantity(1);
+                    setManualWishlist([]);
+                    setIsManualOrderOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold uppercase tracking-tight rounded-xl text-[10.5px] flex items-center space-x-1 shadow transition-all active:scale-95 cursor-pointer"
                 >
-                  Activos ({calls.filter(c => c.status !== 'completed').length})
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Cargar Pedido Manual</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setCallsFilter('completed')}
-                  className={`px-3 py-1 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all ${callsFilter === 'completed' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  Finalizados ({calls.filter(c => c.status === 'completed').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCallsFilter('all')}
-                  className={`px-3 py-1 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all ${callsFilter === 'all' ? 'bg-slate-800 text-slate-200 shadow border border-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  Todos ({calls.length})
-                </button>
+
+                {/* Calls Filter Tabs */}
+                <div className="flex items-center space-x-1 bg-slate-900/90 border border-slate-800 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setCallsFilter('active')}
+                    className={`px-3 py-1 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all ${callsFilter === 'active' ? 'bg-[#0f172a] text-amber-400 border border-slate-800 shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Activos ({calls.filter(c => c.status !== 'completed').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCallsFilter('completed')}
+                    className={`px-3 py-1 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all ${callsFilter === 'completed' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Finalizados ({calls.filter(c => c.status === 'completed').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCallsFilter('all')}
+                    className={`px-3 py-1 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all ${callsFilter === 'all' ? 'bg-slate-800 text-slate-200 shadow border border-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Todos ({calls.length})
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1361,6 +1480,224 @@ export default function AdminPanel({ categories, products, config, isAdmin, onCl
 
         </div>
       </div>
+
+      {/* Manual Order Modal Portal/Overlay */}
+      {isManualOrderOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto animate-fade-in text-slate-100">
+          <div className="bg-[#0b0f19] border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col my-8 overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <ShoppingBag className="w-5 h-5 text-amber-500 animate-pulse" />
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-tight text-white">Ingresar Pedido Manual</h3>
+                  <p className="text-[9.5px] text-slate-400 font-mono">Para pedidos por teléfono o WhatsApp</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsManualOrderOpen(false)}
+                className="p-1 px-2 text-slate-400 hover:text-white hover:bg-slate-900 rounded-xl transition cursor-pointer select-none"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveManualOrder} className="p-5 space-y-4">
+              {/* Clients Metadata */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Nombre del Cliente *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. Juan Pérez"
+                    value={manualClientName}
+                    onChange={(e) => setManualClientName(e.target.value)}
+                    className="w-full bg-[#111625] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Teléfono (WhatsApp)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. 3547123456"
+                      value={manualClientPhone}
+                      onChange={(e) => setManualClientPhone(e.target.value)}
+                      className="w-full bg-[#111625] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-0.5">Dirección / Delivery</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Av. Sarmiento 123"
+                      value={manualClientAddress}
+                      onChange={(e) => setManualClientAddress(e.target.value)}
+                      className="w-full bg-[#111625] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Add Product Section */}
+              <div className="bg-[#111625]/60 border border-slate-800/80 p-3.5 rounded-2xl space-y-3">
+                <span className="text-[10px] uppercase font-black text-amber-400 block tracking-wider">Añadir Productos de la Carta</span>
+                
+                <div className="grid grid-cols-1 gap-2">
+                  <div>
+                    <label className="block text-[9.5px] text-slate-450 mb-0.5">Seleccione un Producto</label>
+                    <select
+                      value={selectedProdId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedProdId(val);
+                        setSelectedProdPriceIdx(0); // reset price selection
+                      }}
+                      className="w-full bg-[#111625] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                    >
+                      <option value="">-- Seleccionar Producto --</option>
+                      {categories.map(cat => {
+                        const catProducts = products.filter(p => p.categoryId === cat.id && !p.isSuspended);
+                        if (catProducts.length === 0) return null;
+                        return (
+                          <optgroup key={cat.id} label={cat.name.toUpperCase()}>
+                            {catProducts.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {selectedProdId && (
+                    (() => {
+                      const prod = products.find(p => p.id === selectedProdId);
+                      if (!prod || prod.prices.length <= 1) return null;
+                      return (
+                        <div className="animate-fade-in">
+                          <label className="block text-[9.5px] text-slate-450 mb-0.5">Opción de Precio / Tamaño</label>
+                          <select
+                            value={selectedProdPriceIdx}
+                            onChange={(e) => setSelectedProdPriceIdx(Number(e.target.value))}
+                            className="w-full bg-[#111625] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                          >
+                            {prod.prices.map((pr, idx) => (
+                              <option key={idx} value={idx}>
+                                {pr.label} - {formatCurrency(pr.value)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })()
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2 items-end pt-1">
+                    <div className="col-span-2">
+                      <label className="block text-[9.5px] text-slate-450 mb-0.5">Cantidad</label>
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
+                          className="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-bold select-none"
+                        >
+                          -
+                        </button>
+                        <span className="w-8 text-center text-xs text-white font-mono font-bold">
+                          {selectedQuantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedQuantity(selectedQuantity + 1)}
+                          className="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-bold select-none"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      disabled={!selectedProdId}
+                      onClick={handleAddProductToManualWishlist}
+                      className="w-full h-[32px] bg-slate-850 hover:bg-indigo-600 disabled:opacity-40 disabled:hover:bg-slate-850 text-white font-bold text-[10.5px] uppercase tracking-wider rounded-xl transition cursor-pointer"
+                    >
+                      Añadir
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Wishlist Box */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5 flex items-center justify-between">
+                  <span>Productos en este Pedido</span>
+                  <span className="font-mono text-amber-400 font-bold">
+                    Total: {formatCurrency(manualWishlist.reduce((acc, x) => acc + (x.selectedPriceValue * x.quantity), 0))}
+                  </span>
+                </label>
+
+                {manualWishlist.length === 0 ? (
+                  <div className="p-4 text-center border border-dashed border-slate-850 rounded-2xl text-[10.5px] text-slate-500 italic">
+                    El pedido está vacío. Seleccione productos arriba para cargarlos.
+                  </div>
+                ) : (
+                  <div className="max-h-[143px] overflow-y-auto space-y-1.5 pr-1 border border-slate-850 rounded-xl p-2.5 bg-[#080c14]">
+                    {manualWishlist.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-1.5 bg-[#111625]/30 rounded-lg border border-slate-800/40 text-xs">
+                        <div className="min-w-0 pr-2">
+                          <p className="font-bold text-slate-100 text-[11px] truncate">
+                            <span className="text-amber-500 font-bold">{item.quantity}x</span> {item.productName}
+                          </p>
+                          <p className="text-[9.5px] text-slate-500 font-mono">
+                            Opción: {item.selectedPriceLabel} • {formatCurrency(item.selectedPriceValue)} c/u
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-2 flex-shrink-0">
+                          <span className="font-mono font-bold text-[10.5px] text-slate-300">
+                            {formatCurrency(item.selectedPriceValue * item.quantity)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProductFromManualWishlist(idx)}
+                            className="p-1 hover:text-red-400 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsManualOrderOpen(false)}
+                  className="flex-1 py-2.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-xl transition active:scale-95 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={manualWishlist.length === 0 || !manualClientName.trim()}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:hover:bg-emerald-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition active:scale-95 shadow-md shadow-emerald-950/30 cursor-pointer"
+                >
+                  Guardar Pedido
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
