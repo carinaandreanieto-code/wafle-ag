@@ -316,7 +316,7 @@ export default function App() {
       {/* Dynamic Themed Content Container */}
       <ThemeBackground styleName={activeCategory?.backgroundStyle || 'luxury'}>
         {/* TOP COMPONENT: Logo status, Table selector & Ring buzzer bell */}
-        <div className="flex flex-col bg-black/60 backdrop-blur-md px-4 py-3.5 sticky top-0 z-30 border-b border-white/5 space-y-3">
+        <div className="flex flex-col bg-black/60 backdrop-blur-md px-4 py-3 sticky top-0 z-30 border-b border-white/5">
           
           {/* Top row: Restaurant Name with reservation action */}
           <div className="flex items-center justify-between">
@@ -355,7 +355,11 @@ export default function App() {
               </div>
             </div>
           </div>
+        </div>
 
+        {/* User Information & Action Panel (Now in normal document flow - scrolls up!) */}
+        <div className="px-4 pt-3.5 pb-1 space-y-3">
+          
           {/* Bottom row: User information & Preguntar action */}
           <div className="flex flex-col bg-white/5 backdrop-blur-md rounded-2xl p-3 border border-white/10 space-y-3">
             <div className="flex flex-col space-y-2">
@@ -516,7 +520,7 @@ export default function App() {
         </div>
 
         {/* SHEETS TABS NAVIGATION: categories at top and wishlist button (Optimized to fit at least 4 leaves easily) */}
-        <div className="bg-black/40 backdrop-blur-md px-2.5 py-2 z-20 sticky top-[92px] border-b border-white/5 flex items-center gap-1 select-none overflow-x-auto no-scrollbar">
+        <div className="bg-black/60 backdrop-blur-md px-2.5 py-2 z-20 sticky top-[64px] border-b border-white/5 flex items-center gap-1 select-none overflow-x-auto no-scrollbar">
           
           {/* Categories Horizontal loop sheets */}
           {categories.length === 0 ? (
@@ -552,42 +556,6 @@ export default function App() {
               className="space-y-3"
             >
               
-              {/* Chef suggestion promo card if configured active */}
-              {config?.chefSuggestion?.active && (
-                <div 
-                  onClick={() => setIsChefSuggestionOpened(true)}
-                  className="relative rounded-3xl overflow-hidden aspect-[4/3] group cursor-pointer border border-white/10 shadow-lg tracking-tight hover:border-amber-500/30 transition-all duration-300"
-                >
-                  <div 
-                    className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-102" 
-                    style={{ backgroundImage: `url('${config.chefSuggestion.photo || 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=400'}')` }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent" />
-                  
-                  <div className="absolute top-3 left-3 bg-amber-500/90 text-black text-[8px] font-black tracking-widest px-2.5 py-0.5 rounded-full flex items-center space-x-1 shadow-md">
-                    <Sparkles className="w-2.5 h-2.5 animate-spin-slow" />
-                    <span>SUGERENCIA</span>
-                  </div>
-
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <div className="flex justify-between items-end">
-                      <div className="pr-2">
-                        <span className="text-[10px] text-amber-500 font-extrabold uppercase tracking-widest">Recomendación Especial</span>
-                        <h3 className="text-lg font-serif font-black italic mt-0.5 leading-tight text-white">
-                          {config.chefSuggestion.name}
-                        </h3>
-                        <p className="text-[10px] text-white/70 line-clamp-1 mt-0.5 font-light">
-                          {config.chefSuggestion.description}
-                        </p>
-                      </div>
-                      <div className="text-sm font-extrabold text-amber-400 whitespace-nowrap bg-black/40 px-2.5 py-1 rounded-xl border border-white/10">
-                        {formatCurrency(config.chefSuggestion.price)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* If empty state */}
               {activeProducts.length === 0 && (
                 <div className="py-12 text-center bg-white/5 backdrop-blur-md rounded-3xl border border-white/10 p-6 flex flex-col items-center justify-center space-y-2">
@@ -708,6 +676,42 @@ export default function App() {
 
                 </div>
               ))}
+
+              {/* Chef suggestion promo card placed below product lists */}
+              {config?.chefSuggestion?.active && (
+                <div 
+                  onClick={() => setIsChefSuggestionOpened(true)}
+                  className="relative rounded-3xl overflow-hidden aspect-[4/3] group cursor-pointer border border-white/10 shadow-lg tracking-tight hover:border-amber-500/30 transition-all duration-300 mt-4"
+                >
+                  <div 
+                    className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-102" 
+                    style={{ backgroundImage: `url('${config.chefSuggestion.photo || 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=400'}')` }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent" />
+                  
+                  <div className="absolute top-3 left-3 bg-amber-500/90 text-black text-[8px] font-black tracking-widest px-2.5 py-0.5 rounded-full flex items-center space-x-1 shadow-md">
+                    <Sparkles className="w-2.5 h-2.5 animate-spin-slow" />
+                    <span>SUGERENCIA</span>
+                  </div>
+
+                  <div className="absolute bottom-4 left-4 right-4 text-white">
+                    <div className="flex justify-between items-end">
+                      <div className="pr-2">
+                        <span className="text-[10px] text-amber-500 font-extrabold uppercase tracking-widest">Recomendación Especial</span>
+                        <h3 className="text-lg font-serif font-black italic mt-0.5 leading-tight text-white">
+                          {config.chefSuggestion.name}
+                        </h3>
+                        <p className="text-[10px] text-white/70 line-clamp-1 mt-0.5 font-light">
+                          {config.chefSuggestion.description}
+                        </p>
+                      </div>
+                      <div className="text-sm font-extrabold text-amber-400 whitespace-nowrap bg-black/40 px-2.5 py-1 rounded-xl border border-white/10">
+                        {formatCurrency(config.chefSuggestion.price)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
             </motion.div>
           </AnimatePresence>

@@ -99,8 +99,12 @@ export default function AdminClientMap({ calls }: AdminClientMapProps) {
             // Polite delay for Nominatim lookup
             await new Promise(resolve => setTimeout(resolve, 600));
             
+            const searchQuery = addr.toLowerCase().includes('alta gracia')
+              ? addr
+              : `${addr}, Alta Gracia, Córdoba, Argentina`;
+
             const response = await fetch(
-              `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1`,
+              `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`,
               {
                 headers: {
                   'Accept': 'application/json',
@@ -146,13 +150,14 @@ export default function AdminClientMap({ calls }: AdminClientMapProps) {
   useEffect(() => {
     if (!mapContainerRef.current) return;
     
-    const defaultLat = -34.6037;
-    const defaultLng = -58.3816;
+    // Center map on Alta Gracia, Córdoba
+    const defaultLat = -31.6529;
+    const defaultLng = -64.4283;
     
     const map = L.map(mapContainerRef.current, {
       zoomControl: false,
       attributionControl: false
-    }).setView([defaultLat, defaultLng], 12);
+    }).setView([defaultLat, defaultLng], 14);
     
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 20
