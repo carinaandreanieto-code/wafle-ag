@@ -111,6 +111,37 @@ async function testConnection() {
 }
 testConnection();
 
+// Helper to look up users by email and initialize their UID record
+async function checkAndSeedAdminByEmail(user: User): Promise<boolean> {
+  try {
+    const userEmail = user.email?.trim().toLowerCase();
+    if (!userEmail) return false;
+
+    // Check if doc by UID already exists
+    const docSnap = await getDoc(doc(db, 'admins', user.uid));
+    if (docSnap.exists()) return true;
+
+    // Search existing admin records for this email
+    const snap = await getDocs(collection(db, 'admins'));
+    let found = false;
+    snap.forEach((docRef) => {
+      const data = docRef.data();
+      if (data && data.email && data.email.trim().toLowerCase() === userEmail) {
+        found = true;
+      }
+    });
+
+    if (found) {
+      await setDoc(doc(db, 'admins', user.uid), { email: userEmail });
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error("Error checking/seeding admin by email", e);
+    return false;
+  }
+}
+
 // Auth Helpers
 export async function loginWithGoogle() {
   try {
@@ -120,6 +151,8 @@ export async function loginWithGoogle() {
     // Auto-seed admin if it's the primary developer
     if (user.email === 'carinaandreanieto@gmail.com') {
       await setDoc(doc(db, 'admins', user.uid), { email: user.email });
+    } else if (user) {
+      await checkAndSeedAdminByEmail(user);
     }
     
     return user;
@@ -134,7 +167,12 @@ export async function logout() {
 }
 
 export function subscribeAuth(callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, callback);
+  return onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      await checkAndSeedAdminByEmail(user);
+    }
+    callback(user);
+  });
 }
 
 // -----------------------------------------------------------------
@@ -328,18 +366,78 @@ export async function isAdminUser(uid: string): Promise<boolean> {
     const docSnap = await getDoc(doc(db, 'admins', uid));
     if (docSnap.exists()) return true;
 
-    // 2. Fallback check for primary_admin if the user is the owner
+    // 2. Check if logged-in user email is authorized in database
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const isAuthorized = await checkAndSeedAdminByEmail(currentUser);
+      if (isAuthorized) return true;
+    }
+
+    // 3. Fallback check for primary_admin if the user is the owner
     const primaryAdminSnap = await getDoc(doc(db, 'admins', 'primary_admin'));
     if (primaryAdminSnap.exists()) {
       const adminData = primaryAdminSnap.data();
       if (adminData.email === auth.currentUser?.email && adminData.email === 'carinaandreanieto@gmail.com') {
-        // If they match primary_admin email but doc by UID doesn't exist yet, 
-        // they are still an admin (and logic in loginWithGoogle should soon seed it).
         return true;
       }
     }
     return false;
   } catch (e) {
     return false;
+  }
+}
+
+// 5. Admin List Management Operations
+export async function addAdminEmail(email: string): Promise<void> {
+  const sanitizedEmail = email.trim().toLowerCase();
+  if (!sanitizedEmail) return;
+  const docId = `email_${sanitizedEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const path = `admins/${docId}`;
+  try {
+    await setDoc(doc(db, 'admins', docId), { email: sanitizedEmail, invitedAt: new Date().toISOString() });
+  } catch (e) {
+    handleFirestoreError(e, OperationType.WRITE, path);
+  }
+}
+
+export async function removeAdminEmail(docId: string): Promise<void> {
+  const path = `admins/${docId}`;
+  try {
+    await deleteDoc(doc(db, 'admins', docId));
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, path);
+  }
+}
+
+export async function fetchAdminsList(): Promise<{ id: string; email: string; isPreSeeded?: boolean }[]> {
+  const path = 'admins';
+  try {
+    const snap = await getDocs(collection(db, 'admins'));
+    const list: { id: string; email: string; isPreSeeded?: boolean }[] = [];
+    snap.forEach((docSnapshot) => {
+      const data = docSnapshot.data();
+      if (data && data.email) {
+        list.push({ 
+          id: docSnapshot.id, 
+          email: data.email,
+          isPreSeeded: docSnapshot.id === 'primary_admin' || docSnapshot.id === 'primary_admin_uid' || data.email === 'carinaandreanieto@gmail.com'
+        });
+      }
+    });
+
+    // Deduplicate by lowercased email
+    const emailsMap = new Map<string, { id: string; email: string; isPreSeeded?: boolean }>();
+    list.forEach(item => {
+      const key = item.email.toLowerCase();
+      const existingItem = emailsMap.get(key);
+      if (!existingItem || (item.isPreSeeded && !existingItem.isPreSeeded)) {
+        emailsMap.set(key, item);
+      }
+    });
+    
+    return Array.from(emailsMap.values());
+  } catch (e) {
+    handleFirestoreError(e, OperationType.LIST, path);
+    return [];
   }
 }

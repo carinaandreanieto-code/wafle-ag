@@ -16,7 +16,10 @@ import {
   saveCall, 
   removeCall,
   loginWithGoogle,
-  logout
+  logout,
+  addAdminEmail,
+  removeAdminEmail,
+  fetchAdminsList
 } from '../firebase';
 import { compressImage, formatCurrency } from '../utils';
 import AdminFinance from './AdminFinance';
@@ -42,7 +45,9 @@ import {
   LogOut,
   LogIn,
   DollarSign,
-  Map
+  Map,
+  Users,
+  UserPlus
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -100,6 +105,64 @@ export default function AdminPanel({ categories, products, config, isAdmin, onCl
   const [chefPhoto, setChefPhoto] = useState(config.chefSuggestion?.photo || '');
   const [chefPrice, setChefPrice] = useState(config.chefSuggestion?.price || 0);
   const [chefActive, setChefActive] = useState(config.chefSuggestion?.active !== false);
+
+  // Google Admins Access Management state
+  const [adminsList, setAdminsList] = useState<{ id: string; email: string; isPreSeeded?: boolean }[]>([]);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [isLoadingAdmins, setIsLoadingAdmins] = useState(false);
+
+  const loadAdmins = async () => {
+    if (!isAdmin) return;
+    setIsLoadingAdmins(true);
+    try {
+      const list = await fetchAdminsList();
+      setAdminsList(list);
+    } catch (err) {
+      console.error("Error loading admins:", err);
+    } finally {
+      setIsLoadingAdmins(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadAdmins();
+    }
+  }, [isAdmin]);
+
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = newAdminEmail.trim().toLowerCase();
+    if (!email) return;
+    if (!email.includes('@')) {
+      alert("Por favor ingresa un correo electrónico válido de Gmail.");
+      return;
+    }
+    try {
+      await addAdminEmail(email);
+      setNewAdminEmail('');
+      await loadAdmins();
+      alert(`¡Se ha autorizado el acceso para ${email}!`);
+    } catch (err: any) {
+      alert(`Error al guardar: ${err.message || err}`);
+    }
+  };
+
+  const handleRemoveAdmin = async (id: string, email: string) => {
+    if (email === 'carinaandreanieto@gmail.com') {
+      alert("No puedes desautorizar al administrador principal.");
+      return;
+    }
+    if (confirm(`¿Estás seguro de que deseas revocar el acceso de administración para el correo: ${email}?`)) {
+      try {
+        await removeAdminEmail(id);
+        await loadAdmins();
+        alert("Acceso revocado con éxito.");
+      } catch (err: any) {
+        alert(`Error al revocar: ${err.message || err}`);
+      }
+    }
+  };
 
   // Subscribe to real-time buzzer calls in admin panel
   useEffect(() => {
@@ -729,6 +792,82 @@ export default function AdminPanel({ categories, products, config, isAdmin, onCl
                   <span>Guardar Datos del Restaurante</span>
                 </button>
               </div>
+            </div>
+
+            {/* Google Admins Access Management section */}
+            <div className="pt-4 border-t border-slate-800/80 space-y-4 bg-slate-950/40 p-4 rounded-2xl border border-slate-800">
+              <div className="flex items-center space-x-2 text-indigo-400">
+                <Users className="w-4 h-4" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Administradores con Gmail</h4>
+              </div>
+
+              <span className="text-[10px] text-slate-400 block leading-relaxed">
+                Agregá las direcciones de Gmail de las personas que querés que tengan acceso de administración. Cuando inicien sesión con Google en esta misma aplicación, el sistema reconocerá su e-mail y se les concederá acceso completo al panel.
+              </span>
+
+              {isAdmin ? (
+                <>
+                  <form onSubmit={handleAddAdmin} className="flex space-x-2">
+                    <input 
+                      type="email"
+                      required
+                      placeholder="ejemplo@gmail.com"
+                      value={newAdminEmail}
+                      onChange={(e) => setNewAdminEmail(e.target.value)}
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3 bg-indigo-600 hover:bg-indigo-500 hover:text-white transition-colors duration-200 text-white rounded-lg flex items-center justify-center"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                    </button>
+                  </form>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {isLoadingAdmins && (
+                      <span className="text-[10px] text-slate-500 animate-pulse block">Cargando administradores...</span>
+                    )}
+                    
+                    {!isLoadingAdmins && adminsList.length === 0 && (
+                      <span className="text-[10px] text-slate-500 block italic">No hay cuentas de Gmail adicionales autorizadas.</span>
+                    )}
+
+                    {!isLoadingAdmins && adminsList.map((adm) => (
+                      <div 
+                        key={adm.id} 
+                        className="flex items-center justify-between p-2 bg-slate-950/60 rounded-xl border border-slate-800/50 hover:border-slate-800 transition"
+                      >
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span className="text-xs text-slate-200 truncate font-mono select-all text-[11px]">
+                            {adm.email}
+                          </span>
+                        </div>
+                        
+                        {!adm.isPreSeeded && (
+                          <button
+                            onClick={() => handleRemoveAdmin(adm.id, adm.email)}
+                            className="p-1 text-rose-500 hover:text-rose-400 hover:bg-rose-950/20 rounded transition"
+                            title="Desautorizar cuenta"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {adm.isPreSeeded && (
+                          <span className="text-[8px] bg-indigo-950 text-indigo-400 border border-indigo-900 px-1.5 py-0.5 rounded font-black uppercase">
+                            Propietario
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <span className="text-[10px] text-rose-400 block font-semibold">
+                  Debes iniciar sesión como administrador para administrar las cuentas autorizadas.
+                </span>
+              )}
             </div>
 
           </div>
