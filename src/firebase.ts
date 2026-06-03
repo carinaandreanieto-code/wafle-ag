@@ -391,7 +391,7 @@ export async function isAdminUser(uid: string): Promise<boolean> {
 export async function addAdminEmail(email: string): Promise<void> {
   const sanitizedEmail = email.trim().toLowerCase();
   if (!sanitizedEmail) return;
-  const docId = `email_${sanitizedEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const docId = `email_${sanitizedEmail}`;
   const path = `admins/${docId}`;
   try {
     await setDoc(doc(db, 'admins', docId), { email: sanitizedEmail, invitedAt: new Date().toISOString() });
